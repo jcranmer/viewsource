@@ -1,0 +1,21 @@
+Viewsource
+==========
+
+Viewsource is a tool originally designed to help write dehydra-based plugins by
+means of dumping out the arguments passed into functions. It is useful if you
+are using one of the referenced tools, or if you are interested in seeing what
+the code actually looks like by the time it gets to a compiler.
+
+Requirements
+============
+
+You need a web server that is capable of running CGI scripts. You will need
+python (to run the CGI scripts). And you will also need the tools used to run
+these scripts:
+
+Dehydra (See https://developer.mozilla.org/en/Dehydra)
+JSHydra (See https://developer.mozilla.org/en/JSHydra)
+
+Once those are installed, you should update viewsource.config as appropriate to
+point to installation paths. After that, load up the page in your favorite web
+browser and test it with a sample program to make sure it works.

@@ -1,0 +1,89 @@
+<!DOCTYPE HTML>
+<html lang="en-US">
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8" />    
+<title>View Source - See how compilers view your code</title>
+<style type="text/css">
+dfn {font-style:normal}
+.highlighted {background-color:yellow}
+.object {color:red}
+body {
+  margin: 0 10%;
+  padding: 10px;
+  font-family: helvetica, arial, sans-serif;
+}
+#selector {
+  float: right;
+  width: 30%;
+}
+</style>
+<link rel="stylesheet" href="google-code-prettify/prettify.css" />
+<script type="text/javascript" src="js/dojo-release-1.3.2/dojo/dojo.js"
+        djConfig="parseOnLoad:true, isDebug:false"></script>
+<script type="application/javascript" src="google-code-prettify/prettify.js">
+</script>
+<script type="application/javascript">
+function load(prog, lang) {
+  var output = document.getElementById("output");
+  var form = document.getElementById("vsform");
+  form.elements["program"].value = prog;
+  output.innerHTML = "Processing your request, please wait";
+  var args = {
+    url: "./viewsource.cgi",
+    load: function(data){
+      dojo.byId('output').innerHTML = data;
+    },
+    error: function(data){
+      alert("An error occurred: ", data);
+    },
+    timeout: 60000,
+    form: "vsform"
+  };
+  dojo.xhrGet(args);
+  var prettyCode = document.getElementById("pretty-source");
+  prettyCode.innerHTML = "";
+  prettyCode.appendChild(document.createTextNode(form.elements["code"].value));
+  prettyCode.className = "prettyprint linenums lang-" + lang;
+  prettyPrint();
+}
+
+dojo.addOnLoad(function() {
+  dojo.connect(dojo.body(), "onmouseover", function(e) {
+    if (e.target.nodeName == 'SPAN') {
+      dojo.query(".object").removeClass("object");
+      dojo.addClass(e.target, "object");
+    } else {
+      dojo.query(".object").removeClass("object");
+    }
+  });
+});
+</script></head>
+<body onload="document.getElementById('code').focus();">
+<img src="images/powered-by-mozilla-small.png">
+
+<p style="width:90%"><strong>View Source</strong> is a web-based interface that
+can be used to help work with static analysis tools. At present, we can view
+source using <a href="https://developer.mozilla.org/en/Dehydra">Dehydra</a> and
+<a href="https://developer.mozilla.org/en/JSHydra">JSHydra</a>. Paste source
+code in the textbox below and choose your analysis tool.</p>
+
+<form id="vsform" target="output">
+<input type="hidden" name="program" value="" />
+<textarea rows="30" cols="90" name="code" id="code"></textarea>
+<div id="selector">
+Analysis Tools:
+<dl>
+<dt>Dehydra</dt>
+<dd><input type="checkbox" name="fshortwchar"/>-fshort-wchar</dd>
+<dd><a href="#output" onclick="load('dehydra-cpp', 'cpp')">C++</a></dd>
+<dd><a href="#output" onclick="load('dehydra-c', 'c')">C</a></dd>
+<dt>JSHydra</dt>
+<dd><a href="#output" onclick="load('jshydra-parse', 'js')">Parse node</a></dd>
+<dd><a href="#output" onclick="load('jshydra-ast', 'js')">AST</a></dd>
+</dl>
+</div>
+</form>
+<pre id="pretty-source"></pre>
+<pre id="output"></pre>
+</body>
+</html>
