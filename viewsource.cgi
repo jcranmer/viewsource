@@ -36,6 +36,10 @@ tool_dict = {
   'jshydra': ['%(jshydra)s'],
   'jshydra-parse': ['scripts/jshydra-parse.js', '%(filename)s'],
   'jshydra-ast': ['scripts/jshydra-ast.js', '--trueast', '%(filename)s'],
+  'clang': ['%(clangdir)s/clang', '-cc1', '-load', '%(clangdump)s', '-plugin',
+    'dump-clang'],
+  'clang-cpp': ['-x', 'c++', '%(filename)s'],
+  'clang-c': ['-x', 'c', '%(filename)s'],
 }
 
 param_map = {
