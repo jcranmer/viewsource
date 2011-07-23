@@ -4,10 +4,6 @@
 #include "clang/Basic/SourceManager.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendPluginRegistry.h"
-#include "clang/Lex/Lexer.h"
-#include "clang/Lex/Preprocessor.h"
-#include "clang/Lex/PPCallbacks.h"
-#include "llvm/Support/raw_ostream.h"
 
 #include <iostream>
 #include <map>
@@ -66,7 +62,8 @@ public:
   map<const char *, ReflectValue> m_values;
 };
 // The list of all Declarations
-map<Decl*, ReflectObject*> declMap; 
+map<Decl*, ReflectObject*> declMap;
+map<TypeLoc, ReflectObject*> typeLocMap;
 
 class ASTDumper;
 
@@ -91,6 +88,21 @@ public:
     }
     return res;
   }
+  ReflectObject *thunk(TypeSourceInfo *tsi) {
+    ReflectObject *obj = new ReflectObject;
+    obj->m_realName = "<em>Name not found</em>";
+    obj->m_values["Type"] = (ReflectObject*)NULL; // QualType
+    obj->m_values["TypeLoc"] = thunk(tsi->getTypeLoc());
+    return obj;
+  }
+  ReflectObject *thunk(TypeLoc t) {
+    ReflectObject *res = typeLocMap[t];
+    if (res == NULL) {
+      typeLocMap[t] = res = new ReflectObject;
+      res->m_realName = NULL;
+    }
+    return res;
+  }
   ReflectObject *thunk2(DeclContext *d) {
     if (!d) return NULL;
     return thunk(Decl::castFromDeclContext(d));
@@ -104,6 +116,7 @@ public:
   }
   ReflectValue listify(const CXXBaseSpecifier &spec) {
     ReflectObject *obj = new ReflectObject;
+    obj->m_realName = "CXXBaseSpecifier";
     obj->m_values["SourceRange"] = spec.getSourceRange();
     obj->m_values["Virtual"] = spec.isVirtual();
     obj->m_values["BaseOfClass"] = spec.isBaseOfClass();
@@ -153,18 +166,24 @@ public:
 
     return true;
   }
+  virtual bool VisitTypeLoc(TypeLoc l) {
+    object = thunk(l);
+    object->m_realName = "TypeLoc";
+    object->m_values["BeginLoc"] = l.getBeginLoc();
+    object->m_values["EndLoc"] = l.getEndLoc();
+    object->m_values["SourceRange"] = l.getSourceRange();
+    object->m_values["LocalSourceRange"] = l.getLocalSourceRange();
+    object->m_values["NextTypeLoc"] = thunk(l.getNextTypeLoc());
+    object->m_values["UnqualifiedLoc"] = thunk(l.getUnqualifiedLoc());
+    object->m_values["IgnoreParens"] = thunk(l.IgnoreParens());
+    return true;
+  }
   void VisitDeclContext(DeclContext *dc) {
     object->m_values["Parent"] = thunk2(dc->getParent());
     object->m_values["LexicalParent"] = thunk2(dc->getLexicalParent());
     object->m_values["LookupParent"] = thunk2(dc->getLookupParent());
     object->m_values["decls"] = makeList(dc->decls_begin(), dc->decls_end());
   }
-  /*virtual bool VisitTranslationUnitDecl(TranslationUnitDecl *d) {
-    object->m_realName = "TranslationUnitDecl";
-    VisitDeclContext(d);
-    object->m_values["AnonymousNamespace"] = thunk(d->getAnonymousNamespace());
-    return true;
-  }*/
 
 #include "dumpclang-gen-info.h"
   void printObject(ReflectObject *object, set<ReflectObject *> &seen);

@@ -1,13 +1,7 @@
 #include "clang/AST/AST.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendPluginRegistry.h"
-#include "clang/Lex/Lexer.h"
-#include "clang/Lex/Preprocessor.h"
-#include "clang/Lex/PPCallbacks.h"
-#include "llvm/Support/raw_ostream.h"
 
 #include <iostream>
 #include <map>
@@ -34,14 +28,11 @@ class ASTDumper;
 class ASTDumper : public ASTConsumer,
     public RecursiveASTVisitor<ASTDumper> {
 private:
-  SourceManager &sm;
-
   CXXRecordDecl *declClass,
-                *declContextClass;
+                *declContextClass,
+                *typeLocClass;
 public:
-  ASTDumper(CompilerInstance &ci) :
-      sm(ci.getSourceManager()) {
-  }
+  ASTDumper(CompilerInstance &ci) {}
 
   // All we need is to follow the final declaration.
   virtual void HandleTranslationUnit(ASTContext &ctx) {
@@ -55,8 +46,10 @@ public:
     std::string className = d->getNameAsString();
     if (className == "Decl")
       declClass = d;
-    if (className == "DeclContext")
+    else if (className == "DeclContext")
       declContextClass = d;
+    else if (className == "TypeLoc")
+      typeLocClass = d;
     if (className != "RecursiveASTVisitor")
       return true;
     CXXRecordDecl::method_iterator it;
@@ -71,7 +64,9 @@ public:
         if (decl->isDerivedFrom(declClass))
           emitDeclVisitor(decl);
       } else {
-        // XXX: TypeLocs
+        const CXXRecordDecl *decl = type->getAsCXXRecordDecl();
+        if (decl && decl->isDerivedFrom(typeLocClass))
+          emitTypeLocVisitor(decl);
       }
     }
     return false;
@@ -93,6 +88,20 @@ public:
     cout << "  object->m_realName = \"" << type << "\";\n";
     if (decl->isDerivedFrom(declContextClass))
       cout << "  VisitDeclContext(d);\n";
+    emitInterestingValues(decl, "d->");
+    cout << "  return true;\n}\n" << endl;
+  }
+
+  void emitTypeLocVisitor(const CXXRecordDecl *decl) {
+    std::string type = decl->getNameAsString();
+    cout << "virtual bool Visit" << type << "(" << type << " l) {\n";
+    cout << "  object->m_realName = \"" << type << "\";\n";
+    emitInterestingValues(decl, "l.");
+    cout << "  return true;\n}\n" << endl;
+  }
+
+  void emitInterestingValues(const CXXRecordDecl *decl, const char *invoke) {
+    std::string type = decl->getNameAsString();
     CXXRecordDecl::method_iterator it;
     std::string last;
     for (it = decl->method_begin(); it != decl->method_end(); it++) {
@@ -119,8 +128,10 @@ public:
           std::string retName = real->getNameAsString();
           if (real->isDerivedFrom(declClass))
             thunk = "thunk";
-          else if (real->isDerivedFrom(declContextClass))
+          else if (real == declContextClass)
             thunk = "thunk2";
+          else if (retName == "TypeSourceInfo")
+            thunk = "thunk";
         } else if ((real = res->getAsCXXRecordDecl())) {
           std::string retName = real->getNameAsString();
           if (retName == "SourceLocation" || retName == "SourceRange")
@@ -137,7 +148,7 @@ public:
       if (!valueName.empty()) {
         printGuard(type, name);
         cout << "  object->m_values[\"" << valueName << "\"] = ";
-        cout << thunk << "(d->" << name << "());\n";
+        cout << thunk << "(" << invoke << name << "());\n";
       } else if (name.size() > 6 && name.substr(name.size() - 6) == "_begin") {
         // Gahh... special case this method
         if (type == "ObjCInterfaceDecl" && name == "all_declared_ivar_begin")
@@ -145,11 +156,10 @@ public:
         std::string base = name.substr(0, name.size() - 6);
         printGuard(type, name);
         cout << "  object->m_values[\"" << base << "s\"] = ";
-        cout << "makeList(d->" << base << "_begin(), d->" <<
+        cout << "makeList(" << invoke << base << "_begin(), " << invoke <<
           base << "_end());\n";
       }
     }
-    cout << "  return true;\n}\n" << endl;
   }
 };
 
