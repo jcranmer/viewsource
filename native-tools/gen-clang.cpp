@@ -10,6 +10,8 @@
 #include <stdlib.h>
 
 const char *guards[][2] = {
+  { "Expr::getObjCProperty",
+    "s->getValueKind() == VK_LValue && s->getObjectKind() == OK_ObjCProperty" },
   { "FunctionDecl::isInlineDefinitionExternallyVisible",
     "d->isInlined()" },
   { "FunctionDecl::isReservedGlobalPlacementOperator",
@@ -30,7 +32,8 @@ class ASTDumper : public ASTConsumer,
 private:
   CXXRecordDecl *declClass,
                 *declContextClass,
-                *typeLocClass;
+                *typeLocClass,
+                *stmtClass;
 public:
   ASTDumper(CompilerInstance &ci) {}
 
@@ -39,6 +42,7 @@ public:
     TraverseDecl(ctx.getTranslationUnitDecl());
     cout << "#if 0\n";
     emitDeclVisitor(declClass);
+    emitDeclVisitor(stmtClass);
     cout << "#endif\n";
   }
 
@@ -50,6 +54,8 @@ public:
       declContextClass = d;
     else if (className == "TypeLoc")
       typeLocClass = d;
+    else if (className == "Stmt")
+      stmtClass = d;
     if (className != "RecursiveASTVisitor")
       return true;
     CXXRecordDecl::method_iterator it;
@@ -63,6 +69,8 @@ public:
         const CXXRecordDecl *decl = type->getCXXRecordDeclForPointerType();
         if (decl->isDerivedFrom(declClass))
           emitDeclVisitor(decl);
+        else if (decl->isDerivedFrom(stmtClass))
+          emitStmtVisitor(value, decl);
       } else {
         const CXXRecordDecl *decl = type->getAsCXXRecordDecl();
         if (decl && decl->isDerivedFrom(typeLocClass))
@@ -89,6 +97,14 @@ public:
     if (decl->isDerivedFrom(declContextClass))
       cout << "  VisitDeclContext(d);\n";
     emitInterestingValues(decl, "d->");
+    cout << "  return true;\n}\n" << endl;
+  }
+
+  void emitStmtVisitor(std::string &name, const CXXRecordDecl *decl) {
+    std::string type = decl->getNameAsString();
+    cout << "virtual bool " << name << "(" << type << " *s) {\n";
+    cout << "  object->m_realName = \"" << type << "\";\n";
+    emitInterestingValues(decl, "s->");
     cout << "  return true;\n}\n" << endl;
   }
 
@@ -128,9 +144,11 @@ public:
           std::string retName = real->getNameAsString();
           if (real->isDerivedFrom(declClass))
             thunk = "thunk";
-          else if (real == declContextClass)
+          else if (retName == "DeclContext")
             thunk = "thunk2";
           else if (retName == "TypeSourceInfo")
+            thunk = "thunk";
+          else if (retName == "Stmt" || real->isDerivedFrom(stmtClass))
             thunk = "thunk";
         } else if ((real = res->getAsCXXRecordDecl())) {
           std::string retName = real->getNameAsString();

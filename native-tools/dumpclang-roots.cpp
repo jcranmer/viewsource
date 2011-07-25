@@ -64,6 +64,7 @@ public:
 // The list of all Declarations
 map<Decl*, ReflectObject*> declMap;
 map<TypeLoc, ReflectObject*> typeLocMap;
+map<Stmt*, ReflectObject*> stmtMap;
 
 class ASTDumper;
 
@@ -89,6 +90,7 @@ public:
     return res;
   }
   ReflectObject *thunk(TypeSourceInfo *tsi) {
+    if (!tsi) return NULL;
     ReflectObject *obj = new ReflectObject;
     obj->m_realName = "<em>Name not found</em>";
     obj->m_values["Type"] = (ReflectObject*)NULL; // QualType
@@ -99,6 +101,15 @@ public:
     ReflectObject *res = typeLocMap[t];
     if (res == NULL) {
       typeLocMap[t] = res = new ReflectObject;
+      res->m_realName = NULL;
+    }
+    return res;
+  }
+  ReflectObject *thunk(const Stmt *s) {
+    if (!s) return NULL;
+    ReflectObject *res = stmtMap[const_cast<Stmt*>(s)];
+    if (res == NULL) {
+      res = stmtMap[const_cast<Stmt*>(s)] = new ReflectObject;
       res->m_realName = NULL;
     }
     return res;
@@ -114,6 +125,9 @@ public:
   ReflectValue listify(const SourceLocation loc) {
     return ReflectValue(loc);
   }
+  ReflectValue listify(const Stmt *s) {
+    return ReflectValue(thunk(s));
+  }
   ReflectValue listify(const CXXBaseSpecifier &spec) {
     ReflectObject *obj = new ReflectObject;
     obj->m_realName = "CXXBaseSpecifier";
@@ -128,14 +142,18 @@ public:
       spec.getAccessSpecifierAsWritten();
     return ReflectValue(obj);
   }
+  ReflectValue listify(const CXXBaseSpecifier *spec) {
+    return spec ? ReflectValue((ReflectObject*)NULL) : listify(*spec);
+  }
   // XXX!
   ReflectValue listify(QualType t) {return ReflectValue((ReflectObject*)NULL);}
   ReflectValue listify(CXXCtorInitializer *t) {return ReflectValue((ReflectObject*)NULL);}
   ReflectValue listify(const BlockDecl::Capture &t) {return ReflectValue((ReflectObject*)NULL);}
+  ReflectValue listify(DesignatedInitExpr::Designator &d) {return ReflectValue((ReflectObject*)NULL);}
   template <typename T>
   ReflectValue makeList(T begin, T end) {
     vector<ReflectValue> list;
-    for (T it = begin; it != end; it++) {
+    for (T it = begin; it != end; ++it) {
       list.push_back(listify(*it));
     }
     return ReflectValue(list);
@@ -176,6 +194,17 @@ public:
     object->m_values["NextTypeLoc"] = thunk(l.getNextTypeLoc());
     object->m_values["UnqualifiedLoc"] = thunk(l.getUnqualifiedLoc());
     object->m_values["IgnoreParens"] = thunk(l.IgnoreParens());
+    return true;
+  }
+  virtual bool VisitStmt(Stmt *s) {
+    object = thunk(s);
+    object->m_realName = "Stmt";
+    object->m_values["StmtClassName"] = s->getStmtClassName();
+    object->m_values["SourceRange"] = s->getSourceRange();
+    object->m_values["LocStart"] = s->getLocStart();
+    object->m_values["LocEnd"] = s->getLocEnd();
+    object->m_values["hasImplicitControlFlow"] = s->hasImplicitControlFlow();
+    object->m_values["childs"] = makeList(s->child_begin(), s->child_end());
     return true;
   }
   void VisitDeclContext(DeclContext *dc) {
@@ -232,9 +261,9 @@ void ASTDumper::printSourceLocation(SourceLocation loc) {
   SourceLocation instantiation = sm.getInstantiationLoc(loc);
   SourceLocation spelling = sm.getSpellingLoc(loc);
   printf("{\n");
-#define PRINT_LOC(name) \
+#define PRINT_LOC(name, head) \
   do { \
-    printf("%s  " #name ": {\n", indent.c_str()); \
+    printf(head "%s  " #name ": {\n", indent.c_str()); \
     printf("%s    file: \"%s\",\n", indent.c_str(), \
       cgiEscape(sm.getBufferName(name)).c_str()); \
     pair<FileID, unsigned> lpair = sm.getDecomposedLoc(name); \
@@ -242,19 +271,21 @@ void ASTDumper::printSourceLocation(SourceLocation loc) {
       sm.getLineNumber(lpair.first, lpair.second)); \
     printf("%s    column: %d,\n", indent.c_str(), \
       sm.getColumnNumber(lpair.first, lpair.second)); \
-    printf("%s  },\n", indent.c_str()); \
+    printf("%s  }", indent.c_str()); \
   } while(false)
-  PRINT_LOC(instantiation);
+  PRINT_LOC(instantiation, "");
   if (spelling != instantiation)
-    PRINT_LOC(spelling);
+    PRINT_LOC(spelling, ",\n");
 #undef PRINT_LOC
   PresumedLoc presumed = sm.getPresumedLoc(loc);
-  printf("%s  presumed: {\n", indent.c_str());
-  printf("%s    file: \"%s\",\n", indent.c_str(), presumed.getFilename());
-  printf("%s    line: %d,\n", indent.c_str(), presumed.getLine());
-  printf("%s    column: %d,\n", indent.c_str(), presumed.getColumn());
-  printf("%s  }\n", indent.c_str());
-  printf("%s}", indent.c_str());
+  if (presumed.getLine() != sm.getInstantiationLineNumber(loc)) {
+    printf(",\n%s  presumed: {\n", indent.c_str());
+    printf("%s    file: \"%s\",\n", indent.c_str(), presumed.getFilename());
+    printf("%s    line: %d,\n", indent.c_str(), presumed.getLine());
+    printf("%s    column: %d,\n", indent.c_str(), presumed.getColumn());
+    printf("%s  }", indent.c_str());
+  }
+  printf("\n%s}", indent.c_str());
 }
 
 void ASTDumper::printValue(ReflectValue &value, set<ReflectObject *> &seen) {
